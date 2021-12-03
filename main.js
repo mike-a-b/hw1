@@ -66,15 +66,12 @@ function reader(src) {
                                 return;
                             }  
                         })
-                    //console.log(file);
-                   // console.log('file', currentPath)
                 }
             })
         })
     })
 }
 
-//main
 try {
     //создаем итоговую директорию если нужно
     if (!fs.existsSync(config.dist)) {
