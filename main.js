@@ -1,7 +1,6 @@
 const yargs = require('yargs')
 const path = require('path')
-const { readdir, stat} = require('fs')
-const fs = require('fs')
+const {readdir, stat, fs} = require('fs')
 
 const args = yargs
     .usage('Использование: node $0 [опции]')
@@ -11,21 +10,21 @@ const args = yargs
     .alias('version', 'v')
     .example('node $0 --entry ./path --dist ./path -D')
     .option('entry', {
-       alias: 'e',
-       describe: 'Указывает путь к исходной директории',
-       default:'./files',
+        alias: 'e',
+        describe: 'Указывает путь к исходной директории',
+        default:'./files',
     })
     .option('dist', {
         alias: 'd',
         describe: 'Указывает путь к итоговой директории',
         default: './dist'
     })
-     .option('delete', {
-         alias: 'D',
-         describe: 'Удалить ли папку ?',
-         default: false,
-         boolean: true
-     })
+    .option('delete', {
+        alias: 'D',
+        describe: 'Удалить ли папку ?',
+        default: false,
+        boolean: true
+    })
     .epilog('Homework 1')
     .argv
 
@@ -37,7 +36,7 @@ const config = {
 
 function reader(src) {
     readdir(src, function(err, files) {
-        if (err) throw err 
+        if (err) throw err
         if (!files.length) throw new Error('нет файлов!')
 
         files.forEach(function(file) {
@@ -48,30 +47,33 @@ function reader(src) {
                 if (stats.isDirectory()) {//директория
                     //продолжаем рекурсию
                     reader(currentPath)
-                   // console.log('dir', currentPath)
+                    // console.log('dir', currentPath)
                 } else {//файл
                     distDir = path.resolve(config.dist, file[0])
                     //создаем директорию с именем по первой букве файла
                     if (!fs.existsSync(distDir)) {
-                        fs.mkdirSync(distDir);
+                        fs.mkdirSync(distDir.toUpperCase());
                     }
                     //копируем файл в папку по первой букве
                     fs.copyFile(currentPath, path.resolve(distDir,file), err => {
                         if(err) throw err;
-                    }) 
+                    })
                     if(config.delete)
                         fs.unlink(currentPath, err => {
                             if (err) {
                                 console.log(err);
                                 return;
-                            }  
+                            }
                         })
+                    //console.log(file);
+                    // console.log('file', currentPath)
                 }
             })
         })
     })
 }
 
+//main
 try {
     //создаем итоговую директорию если нужно
     if (!fs.existsSync(config.dist)) {
@@ -83,8 +85,8 @@ try {
     if(config.delete)
         fs.rmdir(path.resolve(__dirname, args.entry), err => {
             if (err) {
-              console.log(err);
-              return;
+                console.log(err);
+                return;
             }
         })
 } catch (error) {
