@@ -1,7 +1,6 @@
 const yargs = require('yargs')
 const path = require('path')
-const { readdir, stat} = require('fs')
-const fs = require('fs')
+const readdir = stat = fs = require('fs')
 
 const args = yargs
     .usage('Использование: node $0 [опции]')
@@ -36,14 +35,14 @@ const config = {
 }
 
 function reader(src) {
-    readdir(src, function(err, files) {
+    fs.readdir(src, function(err, files) {
         if (err) throw err 
         if (!files.length) throw new Error('нет файлов!')
 
         files.forEach(function(file) {
             const currentPath = path.resolve(src, file)
 
-            stat(currentPath, function(err, stats) {
+            stat.stat(currentPath, function(err, stats) {
                 if (err) throw err
                 if (stats.isDirectory()) {//директория
                     //продолжаем рекурсию
@@ -53,7 +52,7 @@ function reader(src) {
                     distDir = path.resolve(config.dist, file[0])
                     //создаем директорию с именем по первой букве файла
                     if (!fs.existsSync(distDir)) {
-                        fs.mkdirSync(distDir);
+                        fs.mkdirSync(distDir.toUpperCase());
                     }
                     //копируем файл в папку по первой букве
                     fs.copyFile(currentPath, path.resolve(distDir,file), err => {
