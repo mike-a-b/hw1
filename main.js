@@ -1,6 +1,11 @@
 const yargs = require('yargs')
 const path = require('path')
-const {readdir, stat, fs} = require('fs')
+const stat = require('fs')
+const fs = require('fs')
+const util = require('util')
+
+const read = util.promisify(fs.readdir)
+const st = util.promisify(stat.stat)
 
 const args = yargs
     .usage('Использование: node $0 [опции]')
@@ -34,43 +39,45 @@ const config = {
     delete: args.delete
 }
 
-function reader(src) {
-    readdir(src, function(err, files) {
-        if (err) throw err
-        if (!files.length) throw new Error('нет файлов!')
+async function reader(src) {
+    let files = await read(src)
+    // fs.readdir(src, function(err, files) {
+    //     if (err) throw err
+    if (!files.length) throw new Error('нет файлов!')
 
-        files.forEach(function(file) {
-            const currentPath = path.resolve(src, file)
+    files.forEach(file => {
+        const currentPath = path.resolve(src, file)
 
-            stat(currentPath, function(err, stats) {
-                if (err) throw err
-                if (stats.isDirectory()) {//директория
-                    //продолжаем рекурсию
-                    reader(currentPath)
-                    // console.log('dir', currentPath)
-                } else {//файл
-                    distDir = path.resolve(config.dist, file[0])
-                    //создаем директорию с именем по первой букве файла
-                    if (!fs.existsSync(distDir)) {
-                        fs.mkdirSync(distDir.toUpperCase());
-                    }
-                    //копируем файл в папку по первой букве
-                    fs.copyFile(currentPath, path.resolve(distDir,file), err => {
-                        if(err) throw err;
-                    })
-                    if(config.delete)
-                        fs.unlink(currentPath, err => {
-                            if (err) {
-                                console.log(err);
-                                return;
-                            }
-                        })
-                    //console.log(file);
-                    // console.log('file', currentPath)
+        let stats = st(currentPath)
+        stat.stat(currentPath, function(err, stats) {
+            if (err) throw err
+            if (stats.isDirectory()) {//директория
+                //продолжаем рекурсию
+                reader(currentPath)
+                // console.log('dir', currentPath)
+            } else {//файл
+                distDir = path.resolve(config.dist, file[0])
+                //создаем директорию с именем по первой букве файла
+                if (!fs.existsSync(distDir)) {
+                    fs.mkdirSync(distDir.toUpperCase());
                 }
-            })
-        })
-    })
+                //копируем файл в папку по первой букве
+                fs.copyFile(currentPath, path.resolve(distDir,file), err => {
+                    if(err) throw err;
+                })
+                if(config.delete)
+                    fs.unlink(currentPath, err => {
+                        if (err) {
+                            console.log(err);
+                            return;
+                        }
+                    })
+                //console.log(file);
+                // console.log('file', currentPath)
+            }
+        })//stat.stat
+    }) //files.forEach
+    // })
 }
 
 //main
@@ -80,7 +87,9 @@ try {
         fs.mkdirSync('./dist');
     }
     //рекурсивно работаем с папкой
+
     reader(config.entry)
+
     //если указана опция D удаляем исходную папку
     if(config.delete)
         fs.rmdir(path.resolve(__dirname, args.entry), err => {
