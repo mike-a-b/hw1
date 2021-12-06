@@ -3,9 +3,132 @@ const path = require('path')
 const stat = require('fs')
 const fs = require('fs')
 const util = require('util')
+const {readdir, rmdir, unlink, copyFile, mkdir} = require("fs");
 
 const read = util.promisify(fs.readdir)
-const st = util.promisify(stat.stat)
+const pstat = util.promisify(stat.stat)
+const prmdir = util.promisify(fs.rmdir)
+const punlink = util.promisify(fs.unlink);
+const pcopyFile = util.promisify(fs.copyFile);
+
+let counter = 0
+
+class Observer {
+    constructor(cb) {
+        this.observers = new Proxy([], {
+            set(target, prop, value) {
+                target[prop] = value
+
+                if (target.length === 0) {
+                    cb()
+                }
+
+                return true
+            }
+        })
+    }
+
+    add(observer) {
+        this.observers.push(observer)
+    }
+
+    remove(observer) {
+        const index = this.observers.findIndex(obs => obs === observer)
+
+        this.observers.splice(index, 1)
+    }
+}
+
+// const observer = new Observer(() => {
+//     deleteFolder(folder)
+//     console.log('done')
+// })
+function deleteFolder(folder) {
+    (function recursive(src) {
+        if (src === path.resolve(folder, '../')) return console.log('delete done!')
+
+        readdir(src, (err, files) => {
+            if (err) return
+
+            if (!files.length) {
+                rmdir(src, (err) => {
+                    if (err) return
+
+                    recursive(path.resolve(src, '../'))
+                })
+            }
+
+            files.forEach((file) => {
+                const currentPath = path.resolve(src, file)
+
+                stat(currentPath, (err, stats) => {
+                    if (err) return
+
+                    if (stats.isFile()) {
+                        unlink(currentPath, (err) => {
+                            if (err) return
+
+                            recursive(src)
+                        })
+                    } else {
+                        recursive(currentPath)
+                    }
+                })
+            })
+        })
+    })(folder)
+}
+
+function readdirSync(src) {
+    return new Promise((resolve, reject) => {
+        readdir(src, (err, files) =>{
+            if (err) reject(err)
+
+            resolve(files)
+        })
+    })
+}
+
+function statSync(src) {
+    return new Promise((resolve, reject) => {
+        stat.stat(src, (err, stats) => {
+            if (err) reject(err)
+
+            resolve(stats)
+        })
+    })
+}
+
+function mkdirSync(src) {
+    return new Promise((resolve, reject) => {
+        createDir(src, (err) => {
+            if (err) reject(err)
+
+            resolve()
+        })
+    })
+}
+
+function copyFileSync(from, to) {
+    return new Promise((resolve, reject) => {
+        copyFile(from, to, (err) => {
+            if (err) reject(err)
+
+            resolve()
+        })
+    })
+}
+
+function createDir(path, cb) {
+    mkdir(path, (err) => {
+        if (err && err.code !== 'EEXIST') {
+            return cb(err, false)
+        }
+
+        cb(null, true)
+    })
+}
+
 
 const args = yargs
     .usage('Использование: node $0 [опции]')
@@ -39,65 +162,56 @@ const config = {
     delete: args.delete
 }
 
+const promise = []
+
 async function reader(src) {
     let files = await read(src)
     // fs.readdir(src, function(err, files) {
     //     if (err) throw err
     if (!files.length) throw new Error('нет файлов!')
 
-    files.forEach(file => {
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i]
         const currentPath = path.resolve(src, file)
-
-        let stats = st(currentPath)
-        stat.stat(currentPath, function(err, stats) {
-            if (err) throw err
-            if (stats.isDirectory()) {//директория
-                //продолжаем рекурсию
-                reader(currentPath)
-                // console.log('dir', currentPath)
-            } else {//файл
-                distDir = path.resolve(config.dist, file[0])
-                //создаем директорию с именем по первой букве файла
-                if (!fs.existsSync(distDir)) {
-                    fs.mkdirSync(distDir.toUpperCase());
+        let stats = await statSync(currentPath)
+        if (stats.isDirectory()) reader(currentPath)
+        else {
+            distDir = path.resolve(config.dist, file[0].toUpperCase())
+            //создаем директорию с именем по первой букве файла
+            if (!fs.existsSync(distDir)) {
+                fs.mkdirSync(distDir);
+            }
+            //копируем файл в папку по первой букве
+            let err = pcopyFile(currentPath, path.resolve(distDir, file));
+            if (err) throw err;
+            if (config.delete) {
+                let err = punlink(currentPath);
+                if (err) {
+                    console.log(err);
+                    return;
                 }
-                //копируем файл в папку по первой букве
-                fs.copyFile(currentPath, path.resolve(distDir,file), err => {
-                    if(err) throw err;
-                })
-                if(config.delete)
-                    fs.unlink(currentPath, err => {
-                        if (err) {
-                            console.log(err);
-                            return;
-                        }
-                    })
-                //console.log(file);
-                // console.log('file', currentPath)
             }
-        })//stat.stat
-    }) //files.forEach
-    // })
-}
-
-//main
-try {
-    //создаем итоговую директорию если нужно
-    if (!fs.existsSync(config.dist)) {
-        fs.mkdirSync('./dist');
+        }
     }
-    //рекурсивно работаем с папкой
-
-    reader(config.entry)
-
-    //если указана опция D удаляем исходную папку
-    if(config.delete)
-        fs.rmdir(path.resolve(__dirname, args.entry), err => {
-            if (err) {
-                console.log(err);
-                return;
-            }
-        })
-} catch (error) {
-    console.log(error)
 }
+
+(async () => {
+    try {
+        //создаем итоговую директорию если нужно
+        if (!fs.existsSync(config.dist)) {
+            fs.mkdirSync('./dist');
+        }
+        //рекурсивно работаем с папкой
+        await reader(config.entry)
+        console.log('done!')
+        //если указана опция D удаляем исходную папку
+        if(config.delete) {
+            let err = prmdir(path.resolve(__dirname, args.entry));
+            if (err) console.log(err);
+        }
+
+    } catch (error) {
+        console.log(error)
+    }
+})()
